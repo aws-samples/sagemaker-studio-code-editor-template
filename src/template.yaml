@@ -1,0 +1,431 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS CloudFormation Template for SageMaker Studio Code Editor"
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: ml.t3.medium
+    Description: Instance type of Code Editor (Fast launch is supported on ml.t3.medium, ml.t3.large, ml.m5.large, ml.m5.2xlarge, and ml.c5.large.)
+    AllowedValues:
+      [
+        ml.t3.medium,
+        ml.t3.large,
+        ml.t3.xlarge,
+        ml.m5.large,
+        ml.m5.xlarge,
+        ml.m5.2xlarge,
+        ml.m5.4xlarge,
+        ml.m6i.large,
+        ml.m6i.xlarge,
+        ml.m6i.2xlarge,
+        ml.m6i.4xlarge,
+        ml.c5.large,
+        ml.c5.xlarge,
+        ml.c5.2xlarge,
+        ml.c5.4xlarge,
+        ml.c6i.large,
+        ml.c6i.xlarge,
+        ml.c6i.2xlarge,
+        ml.c6i.4xlarge,
+      ]
+  EbsSizeInGb:
+    Type: Number
+    Default: 20
+    Description: EBS volume size of Code Editor (This parameter cannot be decreased after creation.)
+    MinValue: 5
+  AutoStopIdleTimeInMinutes:
+    Type: Number
+    Default: 60
+    Description: Idle time before auto-stop of Code Editor, disabled if 0 (It's based on file changes, not terminal activities. This parameter cannot be updated after creation.)
+    MinValue: 0
+
+Mappings:
+  SageMakerImageArn:
+    us-east-1:
+      CPU: arn:aws:sagemaker:us-east-1:885854791233:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-east-1:885854791233:image/sagemaker-distribution-gpu
+    us-east-2:
+      CPU: arn:aws:sagemaker:us-east-2:37914896644:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-east-2:37914896644:image/sagemaker-distribution-gpu
+    us-west-1:
+      CPU: arn:aws:sagemaker:us-west-1:053634841547:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-west-1:053634841547:image/sagemaker-distribution-gpu
+    us-west-2:
+      CPU: arn:aws:sagemaker:us-west-2:542918446943:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-west-2:542918446943:image/sagemaker-distribution-gpu
+    af-south-1:
+      CPU: arn:aws:sagemaker:af-south-1:238384257742:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:af-south-1:238384257742:image/sagemaker-distribution-gpu
+    ap-east-1:
+      CPU: arn:aws:sagemaker:ap-east-1:523751269255:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-east-1:523751269255:image/sagemaker-distribution-gpu
+    ap-south-1:
+      CPU: arn:aws:sagemaker:ap-south-1:245090515133:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-south-1:245090515133:image/sagemaker-distribution-gpu
+    ap-northeast-2:
+      CPU: arn:aws:sagemaker:ap-northeast-2:064688005998:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-northeast-2:064688005998:image/sagemaker-distribution-gpu
+    ap-southeast-1:
+      CPU: arn:aws:sagemaker:ap-southeast-1:022667117163:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-southeast-1:022667117163:image/sagemaker-distribution-gpu
+    ap-southeast-2:
+      CPU: arn:aws:sagemaker:ap-southeast-2:648430277019:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-southeast-2:648430277019:image/sagemaker-distribution-gpu
+    ap-northeast-1:
+      CPU: arn:aws:sagemaker:ap-northeast-1:010972774902:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-northeast-1:010972774902:image/sagemaker-distribution-gpu
+    ca-central-1:
+      CPU: arn:aws:sagemaker:ca-central-1:481561238223:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ca-central-1:481561238223:image/sagemaker-distribution-gpu
+    eu-central-1:
+      CPU: arn:aws:sagemaker:eu-central-1:545423591354:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:eu-central-1:545423591354:image/sagemaker-distribution-gpu
+    eu-west-1:
+      CPU: arn:aws:sagemaker:eu-west-1:819792524951:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:eu-west-1:819792524951:image/sagemaker-distribution-gpu
+    eu-west-2:
+      CPU: arn:aws:sagemaker:eu-west-2:021081402939:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:eu-west-2:021081402939:image/sagemaker-distribution-gpu
+    eu-west-3:
+      CPU: arn:aws:sagemaker:eu-west-3:856416204555:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:eu-west-3:856416204555:image/sagemaker-distribution-gpu
+    eu-north-1:
+      CPU: arn:aws:sagemaker:eu-north-1:175620155138:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:eu-north-1:175620155138:image/sagemaker-distribution-gpu
+    eu-south-1:
+      CPU: arn:aws:sagemaker:eu-south-1:810671768855:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:eu-south-1:810671768855:image/sagemaker-distribution-gpu
+    sa-east-1:
+      CPU: arn:aws:sagemaker:sa-east-1:567556641782:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:sa-east-1:567556641782:image/sagemaker-distribution-gpu
+    ap-northeast-3:
+      CPU: arn:aws:sagemaker:ap-northeast-3:564864627153:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-northeast-3:564864627153:image/sagemaker-distribution-gpu
+    ap-southeast-3:
+      CPU: arn:aws:sagemaker:ap-southeast-3:370607712162:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:ap-southeast-3:370607712162:image/sagemaker-distribution-gpu
+    me-south-1:
+      CPU: arn:aws:sagemaker:me-south-1:523774347010:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:me-south-1:523774347010:image/sagemaker-distribution-gpu
+    me-central-1:
+      CPU: arn:aws:sagemaker:me-central-1:358593528301:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:me-central-1:358593528301:image/sagemaker-distribution-gpu
+    il-central-1:
+      CPU: arn:aws:sagemaker:il-central-1:080319125002:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:il-central-1:080319125002:image/sagemaker-distribution-gpu
+    cn-north-1:
+      CPU: arn:aws:sagemaker:cn-north-1:674439102856:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:cn-north-1:674439102856:image/sagemaker-distribution-gpu
+    cn-northwest-1:
+      CPU: arn:aws:sagemaker:cn-northwest-1:651871951035:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:cn-northwest-1:651871951035:image/sagemaker-distribution-gpu
+    us-gov-west-1:
+      CPU: arn:aws:sagemaker:us-gov-west-1:300992924816:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-gov-west-1:300992924816:image/sagemaker-distribution-gpu
+    us-gov-east-1:
+      CPU: arn:aws:sagemaker:us-gov-east-1:300993876623:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-gov-east-1:300993876623:image/sagemaker-distribution-gpu
+
+Resources:
+  DefaultVpcLookup:
+    Type: Custom::DefaultVpcLookup
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: DefaultVpcLookupFunction.Arn
+
+  DefaultVpcLookupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-DefaultVpcLookupFunction"
+            - __NAME__SUFFIX__
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt: DefaultVpcLookupFunctionRole.Arn
+      Runtime: python3.12
+      Timeout: 600
+      Code:
+        ZipFile: __PLACEHOLDER__
+      LoggingConfig:
+        LogGroup:
+          Ref: DefaultVpcLookupFunctionLogGroup
+
+  DefaultVpcLookupFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "/aws/lambda/${AWS::StackName}-DefaultVpcLookupFunction"
+            - __NAME__SUFFIX__
+      RetentionInDays: 7
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  DefaultVpcLookupFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-DefaultVpcLookupFunction-Role"
+            - __NAME__SUFFIX__
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DefaultVpcLookupFunction-Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  SageMakerStudioExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-SageMaker-Execution-Role"
+            - __NAME__SUFFIX__
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  SageMakerStudioDomain:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      AppNetworkAccessType: PublicInternetOnly
+      AuthMode: IAM
+      DomainName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-Domain"
+            - __NAME__SUFFIX__
+      SubnetIds:
+        Fn::Split:
+          - ","
+          - Fn::GetAtt: DefaultVpcLookup.SubnetIds
+      VpcId:
+        Fn::GetAtt: DefaultVpcLookup.VpcId
+      DefaultUserSettings:
+        SecurityGroups: []
+        StudioWebPortal: ENABLED
+        DefaultLandingUri: "studio::"
+        ExecutionRole:
+          Fn::GetAtt: SageMakerStudioExecutionRole.Arn
+
+  SageMakerStudioUserProfile:
+    Type: AWS::SageMaker::UserProfile
+    Properties:
+      DomainId:
+        Ref: SageMakerStudioDomain
+      UserProfileName: DefaultUser
+      UserSettings:
+        CodeEditorAppSettings:
+          LifecycleConfigArns:
+            - Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
+
+  SageMakerStudioLifecycleConfig:
+    Type: Custom::SageMakerStudioLifecycleConfig
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: SageMakerStudioLifecycleConfigFunction.Arn
+      DomainId:
+        Ref: SageMakerStudioDomain
+      LifecycleConfigName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-LifecycleConfig"
+            - __NAME__SUFFIX__
+      AutoStopIdleTimeInMinutes:
+        Ref: AutoStopIdleTimeInMinutes
+
+  SageMakerStudioLifecycleConfigFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-LifecycleConfigFunction"
+            - __NAME__SUFFIX__
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt: SageMakerStudioLifecycleConfigFunctionRole.Arn
+      Runtime: python3.12
+      Timeout: 600
+      Code:
+        ZipFile: __PLACEHOLDER__
+      LoggingConfig:
+        LogGroup:
+          Ref: SageMakerStudioLifecycleConfigFunctionLogGroup
+
+  SageMakerStudioLifecycleConfigFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "/aws/lambda/${AWS::StackName}-LifecycleConfigFunction"
+            - __NAME__SUFFIX__
+      RetentionInDays: 7
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  SageMakerStudioLifecycleConfigFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-LifecycleConfigFunction-Role"
+            - __NAME__SUFFIX__
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LifecycleConfigFunction-Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:*StudioLifecycleConfig*
+                  - sagemaker:*Domain*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  SageMakerStudioCodeEditor:
+    Type: Custom::SageMakerStudioCodeEditor
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: SageMakerStudioCodeEditorFunction.Arn
+      DomainId:
+        Ref: SageMakerStudioDomain
+      LifecycleConfigArn:
+        Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
+      InstanceType:
+        Ref: InstanceType
+      UserProfileName: DefaultUser
+      EbsSizeInGb:
+        Ref: EbsSizeInGb
+      SageMakerImageArn:
+        Fn::FindInMap:
+          - SageMakerImageArn
+          - Ref: AWS::Region
+          - CPU
+    DependsOn: SageMakerStudioUserProfile
+
+  SageMakerStudioCodeEditorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-CodeEditorFunction"
+            - __NAME__SUFFIX__
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt: SageMakerStudioCodeEditorFunctionRole.Arn
+      Runtime: python3.12
+      Timeout: 600
+      Code:
+        ZipFile: __PLACEHOLDER__
+      LoggingConfig:
+        LogGroup:
+          Ref: SageMakerStudioCodeEditorFunctionLogGroup
+
+  SageMakerStudioCodeEditorFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "/aws/lambda/${AWS::StackName}-CodeEditorFunction"
+            - __NAME__SUFFIX__
+      RetentionInDays: 7
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  SageMakerStudioCodeEditorFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-CodeEditorFunction-Role"
+            - __NAME__SUFFIX__
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeEditorFunction-Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:*App*
+                  - sagemaker:*Space*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+Outputs:
+  SageMakerStudioUrl:
+    Description: The URL of SageMaker Studio domain
+    Value:
+      Fn::Sub: https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/studio/open/${SageMakerStudioDomain}/DefaultUser
