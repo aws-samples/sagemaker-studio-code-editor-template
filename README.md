@@ -9,10 +9,11 @@ This template includes an additional feature that automatically stops Code Edito
 - `AutoStopIdleTimeInMinutes` : Idle time before auto-stop of Code Editor (disabled if 0)
 - `EbsSizeInGb` : EBS volume size of Code Editor
 - `InstanceType` : Instance type of Code Editor
+- `UseDefaultVpc` : Whether to use the default VPC (true) or create a new one (false)
 
 ## Deployment (1-click)
 
-To deploy the Code Editor within your default VPC, click the "Launch Stack" button for the corresponding region. The deployment will take approximately 5-10 minutes.
+To deploy the Code Editor, click the "Launch Stack" button for the corresponding region. The deployment will take approximately 5-10 minutes.
 
 |   AWS Region   |                                                                                                                                                                                   CloudFormation 1-Click URL                                                                                                                                                                                   |
 | :------------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |

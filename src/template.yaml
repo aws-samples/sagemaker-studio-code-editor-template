@@ -38,6 +38,21 @@ Parameters:
     Default: 60
     Description: Idle time before auto-stop of Code Editor, disabled if 0 (It's based on file changes, not terminal activities. This parameter cannot be updated after creation.)
     MinValue: 0
+  UseDefaultVpc:
+    Type: String
+    Default: true
+    Description: Whether to use the default VPC (true) or create a new one (false)
+    AllowedValues: [true, false]
+
+Conditions:
+  UseDefaultVpc:
+    Fn::Equals:
+      - true
+      - Ref: UseDefaultVpc
+  CreateNewVpc:
+    Fn::Equals:
+      - false
+      - Ref: UseDefaultVpc
 
 Mappings:
   SageMakerImageArn:
@@ -128,12 +143,14 @@ Mappings:
 
 Resources:
   DefaultVpcLookup:
+    Condition: UseDefaultVpc
     Type: Custom::DefaultVpcLookup
     Properties:
       ServiceToken:
         Fn::GetAtt: DefaultVpcLookupFunction.Arn
 
   DefaultVpcLookupFunction:
+    Condition: UseDefaultVpc
     Type: AWS::Lambda::Function
     Properties:
       FunctionName:
@@ -153,6 +170,7 @@ Resources:
           Ref: DefaultVpcLookupFunctionLogGroup
 
   DefaultVpcLookupFunctionLogGroup:
+    Condition: UseDefaultVpc
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName:
@@ -165,6 +183,7 @@ Resources:
     UpdateReplacePolicy: Delete
 
   DefaultVpcLookupFunctionRole:
+    Condition: UseDefaultVpc
     Type: AWS::IAM::Role
     Properties:
       RoleName:
@@ -200,6 +219,188 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
+  SageMakerStudioVpc:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-vpc"
+
+  SageMakerStudioVpcInternetGateway:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-igw"
+
+  SageMakerStudioVpcGatewayAttachment:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: SageMakerStudioVpc
+      InternetGatewayId:
+        Ref: SageMakerStudioVpcInternetGateway
+
+  SageMakerStudioVpcPublicSubnetOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      VpcId:
+        Ref: SageMakerStudioVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-public1"
+
+  SageMakerStudioVpcPublicRouteTableOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: SageMakerStudioVpc
+
+  SageMakerStudioVpcPublicRouteOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: SageMakerStudioVpcPublicRouteTableOne
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: SageMakerStudioVpcInternetGateway
+
+  SageMakerStudioVpcPublicOneRouteTableAssociationOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: SageMakerStudioVpcPublicRouteTableOne
+      SubnetId:
+        Ref: SageMakerStudioVpcPublicSubnetOne
+
+  SageMakerStudioVpcPublicSubnetTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId:
+        Ref: SageMakerStudioVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-public2"
+
+  SageMakerStudioVpcPublicRouteTableTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: SageMakerStudioVpc
+
+  SageMakerStudioVpcPublicRouteTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: SageMakerStudioVpcPublicRouteTableTwo
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: SageMakerStudioVpcInternetGateway
+
+  SageMakerStudioVpcPublicOneRouteTableAssociationTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: SageMakerStudioVpcPublicRouteTableTwo
+      SubnetId:
+        Ref: SageMakerStudioVpcPublicSubnetTwo
+
+  SageMakerStudioVpcPrivateSubnetOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.10.0/24
+      VpcId:
+        Ref: SageMakerStudioVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-private1"
+
+  SageMakerStudioVpcPrivateRouteTableOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: SageMakerStudioVpc
+
+  SageMakerStudioVpcPrivateOneRouteTableAssociationOne:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: SageMakerStudioVpcPrivateRouteTableOne
+      SubnetId:
+        Ref: SageMakerStudioVpcPrivateSubnetOne
+
+  SageMakerStudioVpcPrivateSubnetTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.11.0/24
+      VpcId:
+        Ref: SageMakerStudioVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-private2"
+
+  SageMakerStudioVpcPrivateRouteTableTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: SageMakerStudioVpc
+
+  SageMakerStudioVpcPrivateOneRouteTableAssociationTwo:
+    Condition: CreateNewVpc
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: SageMakerStudioVpcPrivateRouteTableTwo
+      SubnetId:
+        Ref: SageMakerStudioVpcPrivateSubnetTwo
+
   SageMakerStudioExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -231,17 +432,98 @@ Resources:
           - - Fn::Sub: "${AWS::StackName}-Domain"
             - __NAME__SUFFIX__
       SubnetIds:
-        Fn::Split:
-          - ","
-          - Fn::GetAtt: DefaultVpcLookup.SubnetIds
+        Fn::If:
+          - UseDefaultVpc
+          - Fn::Split:
+              - ","
+              - Fn::GetAtt: DefaultVpcLookup.SubnetIds
+          - - Ref: SageMakerStudioVpcPrivateSubnetOne
+            - Ref: SageMakerStudioVpcPrivateSubnetTwo
       VpcId:
-        Fn::GetAtt: DefaultVpcLookup.VpcId
+        Fn::If:
+          - UseDefaultVpc
+          - Fn::GetAtt: DefaultVpcLookup.VpcId
+          - Ref: SageMakerStudioVpc
       DefaultUserSettings:
         SecurityGroups: []
         StudioWebPortal: ENABLED
         DefaultLandingUri: "studio::"
         ExecutionRole:
           Fn::GetAtt: SageMakerStudioExecutionRole.Arn
+
+  SageMakerStudioDomainCleanup:
+    Type: Custom::SageMakerStudioDomainCleanup
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: SageMakerStudioDomainCleanupFunction.Arn
+      DomainId:
+        Ref: SageMakerStudioDomain
+
+  SageMakerStudioDomainCleanupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-DomainCleanupFunction"
+            - __NAME__SUFFIX__
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt: SageMakerStudioDomainCleanupFunctionRole.Arn
+      Runtime: python3.12
+      Timeout: 600
+      Code:
+        ZipFile: __PLACEHOLDER__
+      LoggingConfig:
+        LogGroup:
+          Ref: SageMakerStudioDomainCleanupFunctionLogGroup
+
+  SageMakerStudioDomainCleanupFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "/aws/lambda/${AWS::StackName}-DomainCleanupFunction"
+            - __NAME__SUFFIX__
+      RetentionInDays: 7
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  SageMakerStudioDomainCleanupFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - "-"
+          - - Fn::Sub: "${AWS::StackName}-DomainCleanupFunction-Role"
+            - __NAME__SUFFIX__
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DomainCleanupFunction-Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:*Domain*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
 
   SageMakerStudioUserProfile:
     Type: AWS::SageMaker::UserProfile
@@ -253,6 +535,7 @@ Resources:
         CodeEditorAppSettings:
           LifecycleConfigArns:
             - Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
+    DependsOn: SageMakerStudioDomainCleanup
 
   SageMakerStudioLifecycleConfig:
     Type: Custom::SageMakerStudioLifecycleConfig
@@ -355,7 +638,9 @@ Resources:
           - SageMakerImageArn
           - Ref: AWS::Region
           - CPU
-    DependsOn: SageMakerStudioUserProfile
+    DependsOn:
+      - SageMakerStudioUserProfile
+      - SageMakerStudioDomainCleanup
 
   SageMakerStudioCodeEditorFunction:
     Type: AWS::Lambda::Function

@@ -14,7 +14,14 @@ def str_presenter(dumper, data):
 yaml.add_representer(str, str_presenter)
 
 
-def generate(input_yaml, output_yaml, default_vpc_lookup_py, lifecycle_config_py, code_editor_py):
+def generate(
+    input_yaml,
+    output_yaml,
+    default_vpc_lookup_py,
+    cleanup_domain_py,
+    lifecycle_config_py,
+    code_editor_py,
+):
     with open(input_yaml, "r") as f:
         template_str = f.read()
 
@@ -22,6 +29,9 @@ def generate(input_yaml, output_yaml, default_vpc_lookup_py, lifecycle_config_py
 
     with open(default_vpc_lookup_py, "r") as f:
         template["Resources"]["DefaultVpcLookupFunction"]["Properties"]["Code"]["ZipFile"] = f.read()
+
+    with open(cleanup_domain_py, "r") as f:
+        template["Resources"]["SageMakerStudioDomainCleanupFunction"]["Properties"]["Code"]["ZipFile"] = f.read()
 
     with open(lifecycle_config_py, "r") as f:
         template["Resources"]["SageMakerStudioLifecycleConfigFunction"]["Properties"]["Code"]["ZipFile"] = f.read()
@@ -38,14 +48,16 @@ if __name__ == "__main__":
     parser.add_argument("--input_yaml", type=str, default="src/template.yaml")
     parser.add_argument("--output_yaml", type=str, default="CodeEditorStack.template.yaml")
     parser.add_argument("--default_vpc_lookup_py", type=str, default="src/default_vpc_lookup.py")
+    parser.add_argument("--cleanup_domain_py", type=str, default="src/cleanup_domain.py")
     parser.add_argument("--lifecycle_config_py", type=str, default="src/lifecycle_config.py")
     parser.add_argument("--code_editor_py", type=str, default="src/code_editor.py")
     args = parser.parse_args()
 
     generate(
-        args.input_yaml,
-        args.output_yaml,
-        args.default_vpc_lookup_py,
-        args.lifecycle_config_py,
-        args.code_editor_py,
+        input_yaml=args.input_yaml,
+        output_yaml=args.output_yaml,
+        default_vpc_lookup_py=args.default_vpc_lookup_py,
+        cleanup_domain_py=args.cleanup_domain_py,
+        lifecycle_config_py=args.lifecycle_config_py,
+        code_editor_py=args.code_editor_py,
     )
