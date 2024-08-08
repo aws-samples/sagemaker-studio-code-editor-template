@@ -953,6 +953,12 @@ Resources:
           echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
           sudo apt update -qq && sudo apt upgrade -y -qq
 
+          # setup aws completer
+          echo "complete -C '/usr/local/bin/aws_completer' aws" >> /home/sagemaker-user/.bashrc
+
+          # install tools
+          sudo apt install -y -qq vim git jq curl
+
           # install php
           sudo apt install -y -qq software-properties-common ca-certificates lsb-release apt-transport-https
           LC_ALL=C.UTF-8 sudo add-apt-repository -y ppa:ondrej/php
@@ -978,6 +984,22 @@ Resources:
           sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
           sudo apt update -qq
           sudo apt install -y -qq docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
+
+          # install golang
+          GO_TMP_DIR=/tmp/go
+          mkdir $GO_TMP_DIR && cd $GO_TMP_DIR
+          wget https://go.dev/dl/go1.22.6.linux-amd64.tar.gz -O go.tar.gz
+          sudo tar -xzvf go.tar.gz -C /usr/local
+          echo "export PATH=$HOME/go/bin:/usr/local/go/bin:$PATH" >> /home/sagemaker-user/.bashrc
+          cd && rm -rf $GO_TMP_DIR
+
+          # install samcli
+          SAMCLI_TMP_DIR=/tmp/samcli
+          mkdir $SAMCLI_TMP_DIR && cd $SAMCLI_TMP_DIR
+          wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+          unzip ./aws-sam-cli-linux-x86_64.zip
+          sudo ./install
+          cd && rm -rf $SAMCLI_TMP_DIR
           """
 
 
