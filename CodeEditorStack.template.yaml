@@ -906,11 +906,7 @@ Resources:
           PYTHON_SCRIPT_PATH=$SOLUTION_DIR/sagemaker_code_editor_auto_shut_down/auto_stop_idle.py
 
           # Installing cron
-          sudo apt-get update -y
-          sudo apt-get install -y -q vim
-
-          # Issue - https://github.com/aws-samples/sagemaker-studio-apps-lifecycle-config-examples/issues/12
-          # SM Distribution image 1.6 is not starting cron service by default https://github.com/aws/sagemaker-distribution/issues/354
+          sudo apt-get update -y -qq
 
           # Check if cron needs to be installed
           status="$(dpkg-query -W --showformat='${db:Status-Status}' "cron" 2>&1)"
@@ -932,7 +928,8 @@ Resources:
 
           # Downloading autostop idle Python package.
           echo "Downloading autostop idle Python package..."
-          curl -LO --output-dir /var/tmp/ https://github.com/aws-samples/sagemaker-studio-apps-lifecycle-config-examples/releases/download/v$ASI_VERSION/$PYTHON_PACKAGE
+          curl -LO --output-dir /var/tmp/ \
+              https://github.com/aws-samples/sagemaker-studio-apps-lifecycle-config-examples/releases/download/v$ASI_VERSION/$PYTHON_PACKAGE
           sudo $CONDA_HOME/pip install -U -t $SOLUTION_DIR /var/tmp/$PYTHON_PACKAGE
 
           # Touch file to ensure idleness timer is reset to 0
@@ -940,66 +937,74 @@ Resources:
           touch /opt/amazon/sagemaker/sagemaker-code-editor-server-data/data/User/History/startup_timestamp
 
           # Setting container credential URI variable to /etc/environment to make it available to cron
-          sudo /bin/bash -c "echo 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI=$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI' >> /etc/environment"
+          sudo /bin/bash -c "echo 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI=$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI' \
+              >> /etc/environment"
 
           # Add script to crontab for root.
           echo "Adding autostop idle Python script to crontab..."
-          echo "*/2 * * * * /bin/bash -ic '$CONDA_HOME/python $PYTHON_SCRIPT_PATH --time __AUTO_STOP_IDLE_TIME__ --region $AWS_DEFAULT_REGION >> $LOG_FILE'" | sudo crontab -
+          echo "*/2 * * * * /bin/bash -ic '$CONDA_HOME/python $PYTHON_SCRIPT_PATH --time __AUTO_STOP_IDLE_TIME__ \
+              --region $AWS_DEFAULT_REGION >> $LOG_FILE'" | sudo crontab -
           """
 
           LCC_TEMPLATE = """\
           #!/bin/bash
           set -eux
-          echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
           sudo apt update -qq && sudo apt upgrade -y -qq
 
-          # setup aws completer
-          echo "complete -C '/usr/local/bin/aws_completer' aws" >> /home/sagemaker-user/.bashrc
+          if [ ! -f ~/.initial_setup ]; then
+              touch ~/.initial_setup
+              echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
 
-          # install tools
-          sudo apt install -y -qq vim git jq curl
+              # setup aws completer
+              echo "complete -C '/usr/local/bin/aws_completer' aws" >> /home/sagemaker-user/.bashrc
 
-          # install php
-          sudo apt install -y -qq software-properties-common ca-certificates lsb-release apt-transport-https
-          LC_ALL=C.UTF-8 sudo add-apt-repository -y ppa:ondrej/php
-          sudo apt update -qq
-          sudo apt install -y -qq php8.2 php8.2-cli php8.2-common php8.2-fpm php8.2-mysql php8.2-zip php8.2-gd php8.2-mbstring php8.2-curl php8.2-xml php8.2-bcmath
-          sudo apt install -y -qq sqlite3 mysql-server
+              # install tools
+              sudo apt install -y -qq vim git jq curl
 
-          # install java
-          wget -O - https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
-          sudo apt update -qq
-          sudo apt install -y -qq java-17-amazon-corretto-jdk
+              # install php
+              sudo apt install -y -qq software-properties-common ca-certificates lsb-release apt-transport-https
+              LC_ALL=C.UTF-8 sudo add-apt-repository -y ppa:ondrej/php
+              sudo apt update -qq
+              sudo apt install -y -qq php8.2 php8.2-cli php8.2-common php8.2-fpm
+              sudo apt install -y -qq sqlite3 mysql-server
 
-          # install docker
-          sudo apt update -qq
-          sudo apt install -y -qq ca-certificates curl
-          sudo install -m 0755 -d /etc/apt/keyrings
-          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-          sudo chmod a+r /etc/apt/keyrings/docker.asc
-          echo \
-          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt update -qq
-          sudo apt install -y -qq docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
+              # install java
+              wget -O - https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg
+              echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] \
+                  https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
+              sudo apt update -qq
+              sudo apt install -y -qq java-17-amazon-corretto-jdk
 
-          # install golang
-          GO_TMP_DIR=/tmp/go
-          mkdir $GO_TMP_DIR && cd $GO_TMP_DIR
-          wget https://go.dev/dl/go1.22.6.linux-amd64.tar.gz -O go.tar.gz
-          sudo tar -xzvf go.tar.gz -C /usr/local
-          echo "export PATH=$HOME/go/bin:/usr/local/go/bin:$PATH" >> /home/sagemaker-user/.bashrc
-          cd && rm -rf $GO_TMP_DIR
+              # install docker
+              sudo apt update -qq
+              sudo apt install -y -qq ca-certificates curl
+              sudo install -m 0755 -d /etc/apt/keyrings
+              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              sudo chmod a+r /etc/apt/keyrings/docker.asc
+              echo \
+                  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+                  https://download.docker.com/linux/ubuntu \
+                  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt update -qq
+              sudo apt install -y -qq docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
 
-          # install samcli
-          SAMCLI_TMP_DIR=/tmp/samcli
-          mkdir $SAMCLI_TMP_DIR && cd $SAMCLI_TMP_DIR
-          wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
-          unzip ./aws-sam-cli-linux-x86_64.zip
-          sudo ./install
-          cd && rm -rf $SAMCLI_TMP_DIR
+              # install golang
+              GO_TMP_DIR=/tmp/go
+              mkdir $GO_TMP_DIR && cd $GO_TMP_DIR
+              wget https://go.dev/dl/go1.22.6.linux-amd64.tar.gz -O go.tar.gz
+              sudo tar -xzvf go.tar.gz -C /usr/local
+              echo "export PATH=$HOME/go/bin:/usr/local/go/bin:$PATH" >> /home/sagemaker-user/.bashrc
+              cd && rm -rf $GO_TMP_DIR
+
+              # install samcli
+              SAMCLI_TMP_DIR=/tmp/samcli
+              mkdir $SAMCLI_TMP_DIR && cd $SAMCLI_TMP_DIR
+              wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+              unzip ./aws-sam-cli-linux-x86_64.zip
+              sudo ./install
+              cd && rm -rf $SAMCLI_TMP_DIR
+          fi
           """
 
 
