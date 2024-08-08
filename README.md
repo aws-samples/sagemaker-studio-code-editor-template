@@ -39,7 +39,7 @@ To deploy the Code Editor, click the "Launch Stack" button for the corresponding
 
 ```bash
 aws cloudformation deploy \
-    --template-file CodeEditorStack.template.yaml&param_UseDefaultVpc=true&param_EbsSizeInGb=20&param_InstanceType=ml.t3.medium&param_AutoStopIdleTimeInMinutes=60 \
+    --template-file CodeEditorStack.template.yaml \
     --stack-name CodeEditorStack \
     --capabilities CAPABILITY_NAMED_IAM
 ```
