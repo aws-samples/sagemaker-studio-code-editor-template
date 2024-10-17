@@ -36,7 +36,7 @@ Parameters:
   AutoStopIdleTimeInMinutes:
     Type: Number
     Default: 60
-    Description: Idle time before auto-stop of Code Editor, disabled if 0 (It's based on file changes, not terminal activities. This parameter cannot be updated after creation.)
+    Description: Idle time (in minutes) before auto-stop of Code Editor, disabled if 0 (Must be 60 or greater, or 0.)
     MinValue: 0
   UseDefaultVpc:
     Type: String
@@ -53,6 +53,11 @@ Conditions:
     Fn::Equals:
       - false
       - Ref: UseDefaultVpc
+  EnableAutoStop:
+    Fn::Not:
+      - Fn::Equals:
+          - 0
+          - Ref: AutoStopIdleTimeInMinutes
 
 Mappings:
   SageMakerImageArn:
@@ -444,12 +449,30 @@ Resources:
           - UseDefaultVpc
           - Fn::GetAtt: DefaultVpcLookup.VpcId
           - Ref: SageMakerStudioVpc
+      DomainSettings:
+        DockerSettings:
+          EnableDockerAccess: ENABLED
       DefaultUserSettings:
         SecurityGroups: []
         StudioWebPortal: ENABLED
         DefaultLandingUri: "studio::"
         ExecutionRole:
           Fn::GetAtt: SageMakerStudioExecutionRole.Arn
+        CodeEditorAppSettings:
+          LifecycleConfigArns:
+            - Fn::GetAtt: SageMakerStudioLifecycleConfig.StudioLifecycleConfigArn
+          AppLifecycleManagement:
+            IdleSettings:
+              LifecycleManagement:
+                Fn::If:
+                  - EnableAutoStop
+                  - ENABLED
+                  - DISABLED
+              IdleTimeoutInMinutes:
+                Fn::If:
+                  - EnableAutoStop
+                  - Ref: AutoStopIdleTimeInMinutes
+                  - Ref: AWS::NoValue
 
   SageMakerStudioDomainCleanup:
     Type: Custom::SageMakerStudioDomainCleanup
@@ -531,93 +554,38 @@ Resources:
       DomainId:
         Ref: SageMakerStudioDomain
       UserProfileName: DefaultUser
-      UserSettings:
-        CodeEditorAppSettings:
-          LifecycleConfigArns:
-            - Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
     DependsOn: SageMakerStudioDomainCleanup
 
   SageMakerStudioLifecycleConfig:
-    Type: Custom::SageMakerStudioLifecycleConfig
+    Type: AWS::SageMaker::StudioLifecycleConfig
     Properties:
-      ServiceToken:
-        Fn::GetAtt: SageMakerStudioLifecycleConfigFunction.Arn
-      DomainId:
-        Ref: SageMakerStudioDomain
-      LifecycleConfigName:
+      StudioLifecycleConfigAppType: CodeEditor
+      StudioLifecycleConfigContent:
+        Fn::Base64: |
+          # install tools
+          echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+          sudo apt update -qq
+          sudo apt install -y -qq vim git jq curl ca-certificates
+
+          # install docker
+          if [ -z `which docker` ]; then
+              sudo install -m 0755 -d /etc/apt/keyrings
+              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              sudo chmod a+r /etc/apt/keyrings/docker.asc
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt update -qq
+              sudo apt install -y -qq docker-ce=5:20.10.24~3-0~ubuntu-jammy docker-ce-cli=5:20.10.24~3-0~ubuntu-jammy docker-buildx-plugin=0.17.1-1~ubuntu.22.04~jammy docker-compose-plugin=2.29.7-1~ubuntu.22.04~jammy
+          fi
+
+          if [ ! -f /home/sagemaker-user/.initial_setup ]; then
+              touch /home/sagemaker-user/.initial_setup
+              echo "complete -C '/usr/local/bin/aws_completer' aws" >> /home/sagemaker-user/.bashrc
+          fi
+      StudioLifecycleConfigName:
         Fn::Join:
           - "-"
           - - Fn::Sub: "${AWS::StackName}-LifecycleConfig"
             - __NAME__SUFFIX__
-      AutoStopIdleTimeInMinutes:
-        Ref: AutoStopIdleTimeInMinutes
-
-  SageMakerStudioLifecycleConfigFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName:
-        Fn::Join:
-          - "-"
-          - - Fn::Sub: "${AWS::StackName}-LifecycleConfigFunction"
-            - __NAME__SUFFIX__
-      Handler: index.lambda_handler
-      Role:
-        Fn::GetAtt: SageMakerStudioLifecycleConfigFunctionRole.Arn
-      Runtime: python3.12
-      Timeout: 600
-      Code:
-        ZipFile: __PLACEHOLDER__
-      LoggingConfig:
-        LogGroup:
-          Ref: SageMakerStudioLifecycleConfigFunctionLogGroup
-
-  SageMakerStudioLifecycleConfigFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName:
-        Fn::Join:
-          - "-"
-          - - Fn::Sub: "/aws/lambda/${AWS::StackName}-LifecycleConfigFunction"
-            - __NAME__SUFFIX__
-      RetentionInDays: 7
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
-
-  SageMakerStudioLifecycleConfigFunctionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName:
-        Fn::Join:
-          - "-"
-          - - Fn::Sub: "${AWS::StackName}-LifecycleConfigFunction-Role"
-            - __NAME__SUFFIX__
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LifecycleConfigFunction-Policy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sagemaker:*StudioLifecycleConfig*
-                  - sagemaker:*Domain*
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - cloudformation:DescribeStacks
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
 
   SageMakerStudioCodeEditor:
     Type: Custom::SageMakerStudioCodeEditor
@@ -627,7 +595,7 @@ Resources:
       DomainId:
         Ref: SageMakerStudioDomain
       LifecycleConfigArn:
-        Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
+        Fn::GetAtt: SageMakerStudioLifecycleConfig.StudioLifecycleConfigArn
       InstanceType:
         Ref: InstanceType
       UserProfileName: DefaultUser
@@ -638,7 +606,7 @@ Resources:
           - SageMakerImageArn
           - Ref: AWS::Region
           - CPU
-      SageMakerImageVersionAlias: "1.11.0"
+      SageMakerImageVersionAlias: 2.0.0
     DependsOn:
       - SageMakerStudioUserProfile
       - SageMakerStudioDomainCleanup

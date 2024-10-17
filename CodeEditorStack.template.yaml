@@ -4,6 +4,11 @@ Conditions:
     Fn::Equals:
     - false
     - Ref: UseDefaultVpc
+  EnableAutoStop:
+    Fn::Not:
+    - Fn::Equals:
+      - 0
+      - Ref: AutoStopIdleTimeInMinutes
   UseDefaultVpc:
     Fn::Equals:
     - true
@@ -103,9 +108,8 @@ Outputs:
 Parameters:
   AutoStopIdleTimeInMinutes:
     Default: 60
-    Description: Idle time before auto-stop of Code Editor, disabled if 0 (It's based
-      on file changes, not terminal activities. This parameter cannot be updated after
-      creation.)
+    Description: Idle time (in minutes) before auto-stop of Code Editor, disabled
+      if 0 (Must be 60 or greater, or 0.)
     MinValue: 0
     Type: Number
   EbsSizeInGb:
@@ -293,13 +297,13 @@ Resources:
       InstanceType:
         Ref: InstanceType
       LifecycleConfigArn:
-        Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
+        Fn::GetAtt: SageMakerStudioLifecycleConfig.StudioLifecycleConfigArn
       SageMakerImageArn:
         Fn::FindInMap:
         - SageMakerImageArn
         - Ref: AWS::Region
         - CPU
-      SageMakerImageVersionAlias: 1.11.0
+      SageMakerImageVersionAlias: 2.0.0
       ServiceToken:
         Fn::GetAtt: SageMakerStudioCodeEditorFunction.Arn
       UserProfileName: DefaultUser
@@ -313,6 +317,7 @@ Resources:
           import logging
           import time
           import cfnresponse
+          from typing import Optional
 
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
@@ -339,90 +344,74 @@ Resources:
                   if request_type == "Create":
                       # create space
                       create_space(
-                          domain_id,
-                          SPACE_NAME,
-                          user_profile_name,
-                          ebs_size,
-                          instance_type,
-                          sagemaker_image_arn,
-                          sagemaker_image_version_alias,
-                          lifecycle_config_arn,
+                          domain_id=domain_id,
+                          space_name=SPACE_NAME,
+                          user_profile_name=user_profile_name,
+                          ebs_size=ebs_size,
+                          instance_type=instance_type,
+                          sagemaker_image_arn=sagemaker_image_arn,
+                          sagemaker_image_version_alias=sagemaker_image_version_alias,
+                          lifecycle_config_arn=lifecycle_config_arn,
                       )
                       logger.info(f"Space '{SPACE_NAME}' has been created: 'EbsSizeInGb={ebs_size},InstanceType={instance_type}'")
                       # create app
                       create_app(
-                          domain_id,
-                          SPACE_NAME,
-                          APP_NAME,
-                          instance_type,
-                          sagemaker_image_arn,
-                          sagemaker_image_version_alias,
-                          lifecycle_config_arn,
+                          domain_id=domain_id,
+                          space_name=SPACE_NAME,
+                          app_name=APP_NAME,
+                          instance_type=instance_type,
+                          sagemaker_image_arn=sagemaker_image_arn,
+                          sagemaker_image_version_alias=sagemaker_image_version_alias,
+                          lifecycle_config_arn=lifecycle_config_arn,
                       )
                       logger.info(f"App '{APP_NAME}' has been created: 'InstanceType={instance_type}'")
                       send_success(event, context, {}, physical_resource_id)
 
                   # update
                   elif request_type == "Update":
-                      # see if space should be updated
-                      space_instance_type_updated = False
-                      space_ebs_size_updated = False
-
-                      # see if ebs size has been updated
+                      # fail if ebs size has been descreased
                       res = sagemaker.describe_space(DomainId=domain_id, SpaceName=SPACE_NAME)
                       current_ebs_size = int(res["SpaceSettings"]["SpaceStorageSettings"]["EbsStorageSettings"]["EbsVolumeSizeInGb"])
-                      # fail if ebs size has been descreased
                       if ebs_size < current_ebs_size:
                           e = ValueError("The decrease of 'EbsVolumeSizeInGb' is not supported.")
                           raise e
-                      elif ebs_size > current_ebs_size:
-                          space_ebs_size_updated = True
 
-                      # see if instance type has been updated
-                      current_instance_type = res["SpaceSettings"]["CodeEditorAppSettings"]["DefaultResourceSpec"]["InstanceType"]
-                      if current_instance_type != instance_type:
-                          space_instance_type_updated = True
-
-                      # see if app should be updated
-                      app_updated = False
-                      res = describe_app(domain_id=domain_id, space_name=SPACE_NAME, app_name=APP_NAME)
-                      if not res or res["Status"] in ["Deleted", "Deleting"] or res["ResourceSpec"]["InstanceType"] != instance_type:
-                          app_updated = True
-
-                      # delete existing app (we cannot update EBS storage while app is in service)
-                      if space_ebs_size_updated or app_updated:
-                          delete_app(domain_id, SPACE_NAME, APP_NAME)
-                          logger.info(f"App '{APP_NAME}' has been deleted.")
-                          time.sleep(10)  # wait for app to be ready
+                      # delete existing app
+                      delete_app(domain_id=domain_id, space_name=SPACE_NAME, app_name=APP_NAME)
+                      logger.info(f"App '{APP_NAME}' has been deleted.")
+                      time.sleep(10)  # wait for app to be ready
 
                       # update space
-                      if space_ebs_size_updated or space_instance_type_updated:
-                          update_space(domain_id, SPACE_NAME, ebs_size, instance_type)
-                          logger.info(f"Space '{SPACE_NAME}' has been updated: 'EbsSizeInGb={ebs_size},InstanceType={instance_type}'")
-                          time.sleep(10)  # wait for space to be ready
+                      update_space(
+                          domain_id=domain_id,
+                          space_name=SPACE_NAME,
+                          ebs_size=ebs_size,
+                          instance_type=instance_type,
+                      )
+                      logger.info(f"Space '{SPACE_NAME}' has been updated: 'EbsSizeInGb={ebs_size},InstanceType={instance_type}'")
+                      time.sleep(10)  # wait for space to be ready
 
                       # recreate app
-                      if space_ebs_size_updated or app_updated:
-                          create_app(
-                              domain_id,
-                              SPACE_NAME,
-                              APP_NAME,
-                              instance_type,
-                              sagemaker_image_arn,
-                              sagemaker_image_version_alias,
-                              lifecycle_config_arn,
-                          )
-                          logger.info(f"App '{APP_NAME}' has been created again: 'InstanceType={instance_type}'")
+                      create_app(
+                          domain_id=domain_id,
+                          space_name=SPACE_NAME,
+                          app_name=APP_NAME,
+                          instance_type=instance_type,
+                          sagemaker_image_arn=sagemaker_image_arn,
+                          sagemaker_image_version_alias=sagemaker_image_version_alias,
+                          lifecycle_config_arn=lifecycle_config_arn,
+                      )
+                      logger.info(f"App '{APP_NAME}' has been created again: 'InstanceType={instance_type}'")
 
                       send_success(event, context, {}, physical_resource_id)
 
                   # delete
                   elif request_type == "Delete":
                       # delete app
-                      delete_app(domain_id, SPACE_NAME, APP_NAME)
+                      delete_app(domain_id=domain_id, space_name=SPACE_NAME, app_name=APP_NAME)
                       logger.info(f"App '{APP_NAME}' has been deleted.")
                       # delete space
-                      delete_space(domain_id, SPACE_NAME)
+                      delete_space(domain_id=domain_id, space_name=SPACE_NAME)
                       logger.info(f"Space '{SPACE_NAME}' has been deleted.")
                       send_success(event, context, {}, physical_resource_id)
 
@@ -453,14 +442,14 @@ Resources:
 
 
           def create_space(
-              domain_id,
-              space_name,
-              user_profile_name,
-              ebs_size,
-              instance_type,
-              sagemaker_image_arn,
-              sagemaker_image_version_alias,
-              lifecycle_config_arn,
+              domain_id: str,
+              space_name: str,
+              user_profile_name: str,
+              ebs_size: int,
+              instance_type: str,
+              sagemaker_image_arn: str,
+              sagemaker_image_version_alias: str,
+              lifecycle_config_arn: str,
           ):
               sagemaker.create_space(
                   DomainId=domain_id,
@@ -474,7 +463,7 @@ Resources:
                               "SageMakerImageVersionAlias": sagemaker_image_version_alias,
                               "InstanceType": instance_type,
                               "LifecycleConfigArn": lifecycle_config_arn,
-                          }
+                          },
                       },
                   },
                   OwnershipSettings={"OwnerUserProfileName": user_profile_name},
@@ -484,7 +473,12 @@ Resources:
               return wait_for_space_stability(domain_id, space_name, "InService")
 
 
-          def update_space(domain_id, space_name, ebs_size, instance_type):
+          def update_space(
+              domain_id: str,
+              space_name: str,
+              ebs_size: int,
+              instance_type: str,
+          ):
               sagemaker.update_space(
                   DomainId=domain_id,
                   SpaceName=space_name,
@@ -496,7 +490,7 @@ Resources:
               return wait_for_space_stability(domain_id, space_name, "InService")
 
 
-          def delete_space(domain_id, space_name):
+          def delete_space(domain_id: str, space_name: str):
               try:
                   spaces = sagemaker.list_spaces(DomainIdEquals=domain_id)["Spaces"]
                   spaces = [space for space in spaces if space["SpaceName"] == space_name]
@@ -513,7 +507,12 @@ Resources:
                   raise e
 
 
-          def wait_for_app_stability(domain_id, space_name, app_name, desired_status=None):
+          def wait_for_app_stability(
+              domain_id: str,
+              space_name: str,
+              app_name: str,
+              desired_status: Optional[str] = None,
+          ):
               while True:
                   res = sagemaker.describe_app(DomainId=domain_id, AppType="CodeEditor", AppName=app_name, SpaceName=space_name)
                   status = res["Status"]  # 'Deleted'|'Deleting'|'Failed'|'InService'|'Pending'
@@ -527,13 +526,13 @@ Resources:
 
 
           def create_app(
-              domain_id,
-              space_name,
-              app_name,
-              instance_type,
-              sagemaker_image_arn,
-              sagemaker_image_version_alias,
-              lifecycle_config_arn,
+              domain_id: str,
+              space_name: str,
+              app_name: str,
+              instance_type: str,
+              sagemaker_image_arn: str,
+              sagemaker_image_version_alias: str,
+              lifecycle_config_arn: str,
           ):
               sagemaker.create_app(
                   DomainId=domain_id,
@@ -672,6 +671,21 @@ Resources:
       AppNetworkAccessType: PublicInternetOnly
       AuthMode: IAM
       DefaultUserSettings:
+        CodeEditorAppSettings:
+          AppLifecycleManagement:
+            IdleSettings:
+              IdleTimeoutInMinutes:
+                Fn::If:
+                - EnableAutoStop
+                - Ref: AutoStopIdleTimeInMinutes
+                - Ref: AWS::NoValue
+              LifecycleManagement:
+                Fn::If:
+                - EnableAutoStop
+                - ENABLED
+                - DISABLED
+          LifecycleConfigArns:
+          - Fn::GetAtt: SageMakerStudioLifecycleConfig.StudioLifecycleConfigArn
         DefaultLandingUri: 'studio::'
         ExecutionRole:
           Fn::GetAtt: SageMakerStudioExecutionRole.Arn
@@ -690,6 +704,9 @@ Resources:
                 - Fn::Split:
                   - /
                   - Ref: AWS::StackId
+      DomainSettings:
+        DockerSettings:
+          EnableDockerAccess: ENABLED
       SubnetIds:
         Fn::If:
         - UseDefaultVpc
@@ -890,11 +907,29 @@ Resources:
     Type: AWS::IAM::Role
   SageMakerStudioLifecycleConfig:
     Properties:
-      AutoStopIdleTimeInMinutes:
-        Ref: AutoStopIdleTimeInMinutes
-      DomainId:
-        Ref: SageMakerStudioDomain
-      LifecycleConfigName:
+      StudioLifecycleConfigAppType: CodeEditor
+      StudioLifecycleConfigContent:
+        Fn::Base64: |
+          # install tools
+          echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+          sudo apt update -qq
+          sudo apt install -y -qq vim git jq curl ca-certificates
+
+          # install docker
+          if [ -z `which docker` ]; then
+              sudo install -m 0755 -d /etc/apt/keyrings
+              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              sudo chmod a+r /etc/apt/keyrings/docker.asc
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt update -qq
+              sudo apt install -y -qq docker-ce=5:20.10.24~3-0~ubuntu-jammy docker-ce-cli=5:20.10.24~3-0~ubuntu-jammy docker-buildx-plugin=0.17.1-1~ubuntu.22.04~jammy docker-compose-plugin=2.29.7-1~ubuntu.22.04~jammy
+          fi
+
+          if [ ! -f /home/sagemaker-user/.initial_setup ]; then
+              touch /home/sagemaker-user/.initial_setup
+              echo "complete -C '/usr/local/bin/aws_completer' aws" >> /home/sagemaker-user/.bashrc
+          fi
+      StudioLifecycleConfigName:
         Fn::Join:
         - '-'
         - - Fn::Sub: ${AWS::StackName}-LifecycleConfig
@@ -907,319 +942,13 @@ Resources:
                 - Fn::Split:
                   - /
                   - Ref: AWS::StackId
-      ServiceToken:
-        Fn::GetAtt: SageMakerStudioLifecycleConfigFunction.Arn
-    Type: Custom::SageMakerStudioLifecycleConfig
-  SageMakerStudioLifecycleConfigFunction:
-    Properties:
-      Code:
-        ZipFile: |
-          import boto3
-          import base64
-          import json
-          import logging
-          import time
-          import cfnresponse
-
-          logger = logging.getLogger()
-          logger.setLevel(logging.INFO)
-          sagemaker = boto3.client("sagemaker")
-
-          AUTO_STOP_COMMAND_TEMPLATE = """\
-          ASI_VERSION=0.3.1
-
-          # System variables [do not change if not needed]
-          CONDA_HOME=/opt/conda/bin
-          LOG_FILE=/var/log/apps/app_container.log # Writing to app_container.log delivers logs to CW logs.
-          SOLUTION_DIR=/var/tmp/auto-stop-idle
-          PYTHON_PACKAGE=sagemaker_code_editor_auto_shut_down-$ASI_VERSION.tar.gz
-          PYTHON_SCRIPT_PATH=$SOLUTION_DIR/sagemaker_code_editor_auto_shut_down/auto_stop_idle.py
-
-          # Check if cron needs to be installed
-          status="$(dpkg-query -W --showformat='${db:Status-Status}' "cron" 2>&1)"
-          if [ ! $? = 0 ] || [ ! "$status" = installed ]; then
-              # Fixing invoke-rc.d: policy-rc.d denied execution of restart.
-              sudo /bin/bash -c "echo '#!/bin/sh
-              exit 0' > /usr/sbin/policy-rc.d"
-
-              # Installing cron.
-              echo "Installing cron..."
-              sudo apt-get update -qq
-              sudo apt install cron
-          else
-              echo "Package cron is already installed."
-              sudo cron
-          fi
-
-          # Downloading autostop idle Python package.
-          sudo mkdir -p $SOLUTION_DIR
-          echo "Downloading autostop idle Python package..."
-          curl -LO --output-dir /var/tmp https://github.com/aws-samples/sagemaker-studio-apps-lifecycle-config-examples/releases/download/v$ASI_VERSION/$PYTHON_PACKAGE
-          sudo $CONDA_HOME/pip install -U -t $SOLUTION_DIR /var/tmp/$PYTHON_PACKAGE
-
-          # Setting container credential URI variable to /etc/environment to make it available to cron
-          sudo /bin/bash -c "echo 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI=$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI' >> /etc/environment"
-
-          # Touch file to ensure idleness timer is reset to 0
-          echo "Touching file to reset idleness timer"
-          touch /opt/amazon/sagemaker/sagemaker-code-editor-server-data/data/User/History/startup_timestamp
-
-          # Add script to crontab for root.
-          echo "Adding autostop idle Python script to crontab..."
-          echo "*/2 * * * * /bin/bash -ic '$CONDA_HOME/python $PYTHON_SCRIPT_PATH --time __AUTO_STOP_IDLE_TIME__ --region $AWS_DEFAULT_REGION >> $LOG_FILE'" | sudo crontab -
-          """
-
-          LCC_TEMPLATE = """\
-          #!/bin/bash
-          set -eux
-
-          # install tools
-          echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
-          sudo apt update -qq
-          sudo apt install -y -qq vim git jq curl
-
-          # install php
-          if [ -z `which php` ]; then
-              sudo apt install -y -qq software-properties-common ca-certificates lsb-release apt-transport-https
-              LC_ALL=C.UTF-8 sudo add-apt-repository -y ppa:ondrej/php
-              sudo apt update -qq
-              sudo apt install -y -qq php8.2 php8.2-cli php8.2-common php8.2-fpm
-              sudo apt install -y -qq sqlite3 mysql-server
-          fi
-
-          # install java
-          if [ -z `which java` ]; then
-              wget -O - https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg
-              echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
-              sudo apt update -qq
-              sudo apt install -y -qq java-17-amazon-corretto-jdk
-          fi
-
-          # install docker
-          if [ -z `which docker` ]; then
-              sudo apt update -qq
-              sudo apt install -y -qq ca-certificates curl
-              sudo install -m 0755 -d /etc/apt/keyrings
-              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-              sudo chmod a+r /etc/apt/keyrings/docker.asc
-              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-              sudo apt update -qq
-              sudo apt install -y -qq docker-ce=5:20.10.24~3-0~ubuntu-jammy docker-ce-cli=5:20.10.24~3-0~ubuntu-jammy docker-buildx-plugin docker-compose-plugin
-          fi
-
-          # install golang
-          if [ -z `which go` ]; then
-              GO_TMP_DIR=/tmp/go
-              mkdir $GO_TMP_DIR && cd $GO_TMP_DIR
-              wget https://go.dev/dl/go1.22.6.linux-amd64.tar.gz -O go.tar.gz
-              sudo tar -xzvf go.tar.gz -C /usr/local
-              cd && rm -rf $GO_TMP_DIR
-          fi
-
-          # install samcli
-          if [ -z `which sam` ]; then
-              SAMCLI_TMP_DIR=/tmp/samcli
-              mkdir $SAMCLI_TMP_DIR && cd $SAMCLI_TMP_DIR
-              wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
-              unzip ./aws-sam-cli-linux-x86_64.zip
-              sudo ./install
-              cd && rm -rf $SAMCLI_TMP_DIR
-          fi
-
-          if [ ! -f /home/sagemaker-user/.initial_setup ]; then
-              touch /home/sagemaker-user/.initial_setup
-              echo "complete -C '/usr/local/bin/aws_completer' aws" >> /home/sagemaker-user/.bashrc
-              echo "export PATH=$HOME/go/bin:/usr/local/go/bin:$PATH" >> /home/sagemaker-user/.bashrc
-          fi
-          """
-
-
-          def lambda_handler(event, context):
-              logger.info(f"Received event: {json.dumps(event)}")
-              domain_id = event["ResourceProperties"]["DomainId"]
-              lifecycle_config_name = event["ResourceProperties"]["LifecycleConfigName"].lower()
-              idle_mins = int(event["ResourceProperties"]["AutoStopIdleTimeInMinutes"])
-              request_type = event["RequestType"]
-              physical_resource_id = f"{domain_id}_{str(idle_mins)}"
-
-              try:
-                  # create
-                  if request_type == "Create":
-                      res = create_lifecycle_config(lifecycle_config_name, idle_mins)
-                      update_domain(domain_id)
-                      logger.info(f"Studio Lifecycle Config '{lifecycle_config_name}' has been created.")
-                      send_success(event, context, {"Arn": res["StudioLifecycleConfigArn"]}, physical_resource_id)
-
-                  # update
-                  elif request_type == "Update":
-                      # fail if AutoStopIdleTimeInMinutes has been updated
-                      if physical_resource_id != event["PhysicalResourceId"]:
-                          raise ValueError(
-                              "The update of 'AutoStopIdleTimeInMinutes' is not supported. Please recreate the stack instead."
-                          )
-                      res = sagemaker.describe_studio_lifecycle_config(StudioLifecycleConfigName=lifecycle_config_name)
-                      logger.info(f"Studio Lifecycle Config '{lifecycle_config_name}' has been updated.")
-                      send_success(event, context, {"Arn": res["StudioLifecycleConfigArn"]}, physical_resource_id)
-
-                  # delete
-                  elif request_type == "Delete":
-                      # check existing resources
-                      lcs = sagemaker.list_studio_lifecycle_configs(AppTypeEquals="CodeEditor")["StudioLifecycleConfigs"]
-                      lifecycle_config_names = [lc["StudioLifecycleConfigName"] for lc in lcs]
-                      # skip if lifecycle config has already been deleted
-                      if lifecycle_config_name in lifecycle_config_names:
-                          delete_lifecycle_config(lifecycle_config_name)
-                      logger.info(f"Studio Lifecycle Config '{lifecycle_config_name}' has been deleted.")
-                      send_success(event, context, {}, physical_resource_id)
-
-              except Exception as e:
-                  send_failure(event, context, e)
-
-
-          def send_failure(event, context, e):
-              logger.error(e)
-              cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)}, event.get("PhysicalResourceId"), reason=str(e))
-
-
-          def send_success(event, context, data, physical_resource_id):
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, data, physical_resource_id)
-
-
-          def create_lifecycle_config(lifecycle_config_name: str, idle_mins: int):
-              lcc = LCC_TEMPLATE
-              if idle_mins > 0:
-                  lcc += "\n" + AUTO_STOP_COMMAND_TEMPLATE.replace("__AUTO_STOP_IDLE_TIME__", str(60 * idle_mins))
-              return sagemaker.create_studio_lifecycle_config(
-                  StudioLifecycleConfigName=lifecycle_config_name,
-                  StudioLifecycleConfigContent=base64.b64encode(lcc.encode("utf-8")).decode("utf-8"),
-                  StudioLifecycleConfigAppType="CodeEditor",
-              )
-
-
-          def delete_lifecycle_config(lifecycle_config_name):
-              try:
-                  sagemaker.delete_studio_lifecycle_config(StudioLifecycleConfigName=lifecycle_config_name)
-              except sagemaker.exceptions.ResourceNotFound as e:
-                  logger.info(
-                      f"Studio Lifecycle Config '{lifecycle_config_name}' has beed deleted. Recovering from exception: {str(e)}"
-                  )
-              except Exception as e:
-                  raise e
-
-
-          def update_domain(domain_id):
-              sagemaker.update_domain(
-                  DomainId=domain_id,
-                  DomainSettingsForUpdate={
-                      "DockerSettings": {
-                          "EnableDockerAccess": "ENABLED",
-                      },
-                  },
-              )
-              while True:
-                  res = sagemaker.describe_domain(DomainId=domain_id)
-                  status = res["Status"]  # 'Deleting'|'Failed'|'InService'|'Pending'|'Updating'|'Update_Failed'|'Delete_Failed'
-                  if status == "InService":
-                      break
-                  if status in ["Failed", "Update_Failed", "Delete_Failed"]:
-                      raise RuntimeError(f"Space is in '{status}' state.")
-                  else:
-                      time.sleep(10)
-              return res
-      FunctionName:
-        Fn::Join:
-        - '-'
-        - - Fn::Sub: ${AWS::StackName}-LifecycleConfigFunction
-          - Fn::Select:
-            - 0
-            - Fn::Split:
-              - '-'
-              - Fn::Select:
-                - 2
-                - Fn::Split:
-                  - /
-                  - Ref: AWS::StackId
-      Handler: index.lambda_handler
-      LoggingConfig:
-        LogGroup:
-          Ref: SageMakerStudioLifecycleConfigFunctionLogGroup
-      Role:
-        Fn::GetAtt: SageMakerStudioLifecycleConfigFunctionRole.Arn
-      Runtime: python3.12
-      Timeout: 600
-    Type: AWS::Lambda::Function
-  SageMakerStudioLifecycleConfigFunctionLogGroup:
-    DeletionPolicy: Delete
-    Properties:
-      LogGroupName:
-        Fn::Join:
-        - '-'
-        - - Fn::Sub: /aws/lambda/${AWS::StackName}-LifecycleConfigFunction
-          - Fn::Select:
-            - 0
-            - Fn::Split:
-              - '-'
-              - Fn::Select:
-                - 2
-                - Fn::Split:
-                  - /
-                  - Ref: AWS::StackId
-      RetentionInDays: 7
-    Type: AWS::Logs::LogGroup
-    UpdateReplacePolicy: Delete
-  SageMakerStudioLifecycleConfigFunctionRole:
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-        - Action: sts:AssumeRole
-          Effect: Allow
-          Principal:
-            Service: lambda.amazonaws.com
-        Version: '2012-10-17'
-      Policies:
-      - PolicyDocument:
-          Statement:
-          - Action:
-            - sagemaker:*StudioLifecycleConfig*
-            - sagemaker:*Domain*
-            Effect: Allow
-            Resource: '*'
-          - Action:
-            - cloudformation:DescribeStacks
-            Effect: Allow
-            Resource: '*'
-          - Action:
-            - logs:CreateLogGroup
-            - logs:CreateLogStream
-            - logs:PutLogEvents
-            Effect: Allow
-            Resource: '*'
-          Version: '2012-10-17'
-        PolicyName: LifecycleConfigFunction-Policy
-      RoleName:
-        Fn::Join:
-        - '-'
-        - - Fn::Sub: ${AWS::StackName}-LifecycleConfigFunction-Role
-          - Fn::Select:
-            - 0
-            - Fn::Split:
-              - '-'
-              - Fn::Select:
-                - 2
-                - Fn::Split:
-                  - /
-                  - Ref: AWS::StackId
-    Type: AWS::IAM::Role
+    Type: AWS::SageMaker::StudioLifecycleConfig
   SageMakerStudioUserProfile:
     DependsOn: SageMakerStudioDomainCleanup
     Properties:
       DomainId:
         Ref: SageMakerStudioDomain
       UserProfileName: DefaultUser
-      UserSettings:
-        CodeEditorAppSettings:
-          LifecycleConfigArns:
-          - Fn::GetAtt: SageMakerStudioLifecycleConfig.Arn
     Type: AWS::SageMaker::UserProfile
   SageMakerStudioVpc:
     Condition: CreateNewVpc
