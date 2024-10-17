@@ -18,6 +18,7 @@ def lambda_handler(event, context):
     user_profile_name = event["ResourceProperties"]["UserProfileName"]
     instance_type = event["ResourceProperties"]["InstanceType"]
     sagemaker_image_arn = event["ResourceProperties"]["SageMakerImageArn"]
+    sagemaker_image_version_alias = event["ResourceProperties"]["SageMakerImageVersionAlias"]
     lifecycle_config_arn = event["ResourceProperties"]["LifecycleConfigArn"]
     ebs_size = int(event["ResourceProperties"]["EbsSizeInGb"])
     request_type = event["RequestType"]
@@ -34,11 +35,20 @@ def lambda_handler(event, context):
                 ebs_size,
                 instance_type,
                 sagemaker_image_arn,
+                sagemaker_image_version_alias,
                 lifecycle_config_arn,
             )
             logger.info(f"Space '{SPACE_NAME}' has been created: 'EbsSizeInGb={ebs_size},InstanceType={instance_type}'")
             # create app
-            create_app(domain_id, SPACE_NAME, APP_NAME, instance_type, sagemaker_image_arn, lifecycle_config_arn)
+            create_app(
+                domain_id,
+                SPACE_NAME,
+                APP_NAME,
+                instance_type,
+                sagemaker_image_arn,
+                sagemaker_image_version_alias,
+                lifecycle_config_arn,
+            )
             logger.info(f"App '{APP_NAME}' has been created: 'InstanceType={instance_type}'")
             send_success(event, context, {}, physical_resource_id)
 
@@ -83,7 +93,15 @@ def lambda_handler(event, context):
 
             # recreate app
             if space_ebs_size_updated or app_updated:
-                create_app(domain_id, SPACE_NAME, APP_NAME, instance_type, sagemaker_image_arn, lifecycle_config_arn)
+                create_app(
+                    domain_id,
+                    SPACE_NAME,
+                    APP_NAME,
+                    instance_type,
+                    sagemaker_image_arn,
+                    sagemaker_image_version_alias,
+                    lifecycle_config_arn,
+                )
                 logger.info(f"App '{APP_NAME}' has been created again: 'InstanceType={instance_type}'")
 
             send_success(event, context, {}, physical_resource_id)
@@ -131,6 +149,7 @@ def create_space(
     ebs_size,
     instance_type,
     sagemaker_image_arn,
+    sagemaker_image_version_alias,
     lifecycle_config_arn,
 ):
     sagemaker.create_space(
@@ -142,6 +161,7 @@ def create_space(
             "CodeEditorAppSettings": {
                 "DefaultResourceSpec": {
                     "SageMakerImageArn": sagemaker_image_arn,
+                    "SageMakerImageVersionAlias": sagemaker_image_version_alias,
                     "InstanceType": instance_type,
                     "LifecycleConfigArn": lifecycle_config_arn,
                 }
@@ -196,7 +216,15 @@ def wait_for_app_stability(domain_id, space_name, app_name, desired_status=None)
     return res
 
 
-def create_app(domain_id, space_name, app_name, instance_type, sagemaker_image_arn, lifecycle_config_arn):
+def create_app(
+    domain_id,
+    space_name,
+    app_name,
+    instance_type,
+    sagemaker_image_arn,
+    sagemaker_image_version_alias,
+    lifecycle_config_arn,
+):
     sagemaker.create_app(
         DomainId=domain_id,
         SpaceName=space_name,
@@ -205,6 +233,7 @@ def create_app(domain_id, space_name, app_name, instance_type, sagemaker_image_a
         ResourceSpec={
             "InstanceType": instance_type,
             "SageMakerImageArn": sagemaker_image_arn,
+            "SageMakerImageVersionAlias": sagemaker_image_version_alias,
             "LifecycleConfigArn": lifecycle_config_arn,
         },
     )

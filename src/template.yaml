@@ -638,6 +638,7 @@ Resources:
           - SageMakerImageArn
           - Ref: AWS::Region
           - CPU
+      SageMakerImageVersionAlias: "1.11.0"
     DependsOn:
       - SageMakerStudioUserProfile
       - SageMakerStudioDomainCleanup
