@@ -19,7 +19,6 @@ def generate(
     output_yaml,
     default_vpc_lookup_py,
     cleanup_domain_py,
-    lifecycle_config_py,
     code_editor_py,
 ):
     with open(input_yaml, "r") as f:
@@ -32,9 +31,6 @@ def generate(
 
     with open(cleanup_domain_py, "r") as f:
         template["Resources"]["SageMakerStudioDomainCleanupFunction"]["Properties"]["Code"]["ZipFile"] = f.read()
-
-    with open(lifecycle_config_py, "r") as f:
-        template["Resources"]["SageMakerStudioLifecycleConfigFunction"]["Properties"]["Code"]["ZipFile"] = f.read()
 
     with open(code_editor_py, "r") as f:
         template["Resources"]["SageMakerStudioCodeEditorFunction"]["Properties"]["Code"]["ZipFile"] = f.read()
@@ -49,7 +45,6 @@ if __name__ == "__main__":
     parser.add_argument("--output_yaml", type=str, default="CodeEditorStack.template.yaml")
     parser.add_argument("--default_vpc_lookup_py", type=str, default="src/default_vpc_lookup.py")
     parser.add_argument("--cleanup_domain_py", type=str, default="src/cleanup_domain.py")
-    parser.add_argument("--lifecycle_config_py", type=str, default="src/lifecycle_config.py")
     parser.add_argument("--code_editor_py", type=str, default="src/code_editor.py")
     args = parser.parse_args()
 
@@ -58,6 +53,5 @@ if __name__ == "__main__":
         output_yaml=args.output_yaml,
         default_vpc_lookup_py=args.default_vpc_lookup_py,
         cleanup_domain_py=args.cleanup_domain_py,
-        lifecycle_config_py=args.lifecycle_config_py,
         code_editor_py=args.code_editor_py,
     )

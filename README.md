@@ -2,7 +2,7 @@
 
 This sample CloudFormation template creates an [Amazon SageMaker Studio Code Editor](https://docs.aws.amazon.com/sagemaker/latest/dg/code-editor.html), which provides a cloud-based IDE based on [Code-OSS, Visual Studio Code - Open Source](https://github.com/microsoft/vscode#visual-studio-code---open-source-code---oss). It has the [AWS Toolkit for VS Code extension](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html) pre-installed, which enables connections to AWS services such as [Amazon Q Developer](https://aws.amazon.com/q/developer/).
 
-This template includes an additional feature that automatically stops Code Editor after a certain period of inactivity.
+This sample template is designed for use in workshops and hands-ons. For your development environments, we recommend creating your own [lifecycle config](https://docs.aws.amazon.com/sagemaker/latest/dg/code-editor-use-lifecycle-configurations.html) or [custom image](https://docs.aws.amazon.com/sagemaker/latest/dg/code-editor-custom-images.html) with all the necessary tools and libraries installed.
 
 ## Parameters
 
