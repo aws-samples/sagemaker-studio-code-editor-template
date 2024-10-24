@@ -562,10 +562,20 @@ Resources:
       StudioLifecycleConfigAppType: CodeEditor
       StudioLifecycleConfigContent:
         Fn::Base64: |
+          #!/bin/bash
           # install tools
           echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
           sudo apt update -qq
           sudo apt install -y -qq vim git jq curl
+          # install docker
+          if [ -z `which docker` ]; then
+              sudo install -m 0755 -d /etc/apt/keyrings
+              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              sudo chmod a+r /etc/apt/keyrings/docker.asc
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt update -qq
+              sudo apt install -y -qq docker-ce=5:20.10.24~3-0~ubuntu-jammy docker-ce-cli=5:20.10.24~3-0~ubuntu-jammy docker-buildx-plugin=0.17.1-1~ubuntu.22.04~jammy docker-compose-plugin=2.29.7-1~ubuntu.22.04~jammy
+          fi
           # add completion
           LINE="complete -C '/usr/local/bin/aws_completer' aws"
           grep -qxF "$LINE" /home/sagemaker-user/.bashrc || echo "$LINE" >> /home/sagemaker-user/.bashrc
