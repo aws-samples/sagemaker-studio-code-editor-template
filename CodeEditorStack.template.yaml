@@ -107,7 +107,7 @@ Outputs:
       Fn::Sub: https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/studio/open/${SageMakerStudioDomain}/DefaultUser
 Parameters:
   AutoStopIdleTimeInMinutes:
-    Default: 60
+    Default: 120
     Description: Idle time (in minutes) before auto-stop of Code Editor, disabled
       if 0 (Must be 60 or greater, or 0.)
     MinValue: 0
@@ -927,10 +927,15 @@ Resources:
           # add completion
           LINE="complete -C '/usr/local/bin/aws_completer' aws"
           grep -qxF "$LINE" /home/sagemaker-user/.bashrc || echo "$LINE" >> /home/sagemaker-user/.bashrc
+          # remove metadata file
+          METADATA_FILE="/home/sagemaker-user/.sagemaker-last-active-timestamp"
+          if [ -f $METADATA_FILE ]; then
+              rm $METADATA_FILE
+          fi
       StudioLifecycleConfigName:
         Fn::Join:
         - '-'
-        - - Fn::Sub: ${AWS::StackName}-LifecycleConfig
+        - - Fn::Sub: ${AWS::StackName}-CodeEditorLifecycleConfig
           - Fn::Select:
             - 0
             - Fn::Split:
