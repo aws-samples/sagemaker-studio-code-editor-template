@@ -35,7 +35,7 @@ Parameters:
     MinValue: 5
   AutoStopIdleTimeInMinutes:
     Type: Number
-    Default: 60
+    Default: 120
     Description: Idle time (in minutes) before auto-stop of Code Editor, disabled if 0 (Must be 60 or greater, or 0.)
     MinValue: 0
   UseDefaultVpc:
