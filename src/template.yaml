@@ -579,10 +579,15 @@ Resources:
           # add completion
           LINE="complete -C '/usr/local/bin/aws_completer' aws"
           grep -qxF "$LINE" /home/sagemaker-user/.bashrc || echo "$LINE" >> /home/sagemaker-user/.bashrc
+          # remove metadata file
+          METADATA_FILE="/home/sagemaker-user/.sagemaker-last-active-timestamp"
+          if [ -f $METADATA_FILE ]; then
+              rm $METADATA_FILE
+          fi
       StudioLifecycleConfigName:
         Fn::Join:
           - "-"
-          - - Fn::Sub: "${AWS::StackName}-LifecycleConfig"
+          - - Fn::Sub: "${AWS::StackName}-CodeEditorLifecycleConfig"
             - __NAME__SUFFIX__
 
   SageMakerStudioCodeEditor:
