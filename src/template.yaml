@@ -65,8 +65,8 @@ Mappings:
       CPU: arn:aws:sagemaker:us-east-1:885854791233:image/sagemaker-distribution-cpu
       GPU: arn:aws:sagemaker:us-east-1:885854791233:image/sagemaker-distribution-gpu
     us-east-2:
-      CPU: arn:aws:sagemaker:us-east-2:37914896644:image/sagemaker-distribution-cpu
-      GPU: arn:aws:sagemaker:us-east-2:37914896644:image/sagemaker-distribution-gpu
+      CPU: arn:aws:sagemaker:us-east-2:037914896644:image/sagemaker-distribution-cpu
+      GPU: arn:aws:sagemaker:us-east-2:037914896644:image/sagemaker-distribution-gpu
     us-west-1:
       CPU: arn:aws:sagemaker:us-west-1:053634841547:image/sagemaker-distribution-cpu
       GPU: arn:aws:sagemaker:us-west-1:053634841547:image/sagemaker-distribution-gpu
