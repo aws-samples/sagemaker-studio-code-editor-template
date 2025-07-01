@@ -567,6 +567,8 @@ Resources:
           echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
           sudo apt update -qq
           sudo apt install -y -qq vim git jq curl
+          # install Q Developer
+          sagemaker-code-editor --install-extension amazonwebservices/amazon-q-vscode --extensions-dir /opt/amazon/sagemaker/sagemaker-code-editor-server-data/extensions
           # install docker
           if [ -z `which docker` ]; then
               sudo install -m 0755 -d /etc/apt/keyrings
@@ -574,7 +576,7 @@ Resources:
               sudo chmod a+r /etc/apt/keyrings/docker.asc
               echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
               sudo apt update -qq
-              sudo apt install -y -qq docker-ce=5:20.10.24~3-0~ubuntu-jammy docker-ce-cli=5:20.10.24~3-0~ubuntu-jammy docker-buildx-plugin=0.17.1-1~ubuntu.22.04~jammy docker-compose-plugin=2.29.7-1~ubuntu.22.04~jammy
+              sudo apt install -y -qq docker-ce=5:28.3.0-1~ubuntu.22.04~jammy docker-ce-cli=5:28.3.0-1~ubuntu.22.04~jammy docker-buildx-plugin=0.25.0-1~ubuntu.22.04~jammy docker-compose-plugin=2.37.3-1~ubuntu.22.04~jammy
           fi
           # add completion
           LINE="complete -C '/usr/local/bin/aws_completer' aws"
@@ -604,7 +606,7 @@ Resources:
           - SageMakerImageArn
           - Ref: AWS::Region
           - CPU
-      SageMakerImageVersionAlias: 2.2.1
+      SageMakerImageVersionAlias: 3.2.0
     DependsOn:
       - SageMakerStudioUserProfile
       - SageMakerStudioDomainCleanup
